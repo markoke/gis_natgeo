@@ -1,0 +1,197 @@
+---
+title: "R Notebook"
+
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+plot(cars)
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+```{r}
+require(maptools)
+require(sp)
+require(randomForest)
+require(raster)
+require (rgdal)
+cat("Set variables and start processing\n")
+setwd("/home/katalina/Documents/Data/Notebook_Data/test4_")
+shapefile <- '/home/katalina/Documents/Data/Notebook_Data/test4_/training.shp'
+classNums <- c(11,12,21,22)
+classSampNums <- c(100,100,100,100)
+attName <- 'id'
+nd <- -9999
+inImageName <- 'mfnp_20011_2014_stacked_upper.tif'
+outImageName<-'mfnp_2011_2014_stacked_upper_randomforest2.tif'
+outMarginFile <- 'margin.shp'
+
+```
+
+```{r}
+outMarginFile <- 'margin.shp'
+classImage <- TRUE
+probImage <- FALSE
+threshImage <- FALSE
+probThreshold <- 75
+xBand <- 2
+yBand <- 3
+
+```
+
+```{r}
+startTime <- Sys.time()
+cat("Start time", format(startTime),"\n")
+vec<-readOGR(dsn = ".", layer = "training")
+allAtt <- vec@data
+tabAtt <-table(allAtt[[attName]])
+uniqueAtt <-as.numeric(names(tabAtt))
+
+```
+
+```{r}
+if (length(classNums) != length(classSampNums)) {
+  cat("\n***************length of classNums and classSampNums no equal***************** \n")
+  stop("Check the classNums and classSampNums variable\n", call.=FALSE)
+}
+
+# Check if all classNums exist in uniqueAtt
+    #### CHECK THIS FUNCTION TO SEE IF classNums ARE IN uniqueAtt  ################
+if (sum(classNums %in% uniqueAtt) != length(uniqueAtt)) {
+  cat("\n*******not all classes in classNums are defined in the vecotr file******* \n")
+  stop("Check classNums and vector attribute table\n", call.=FALSE)
+}
+    
+
+cat("Create training data using all pixels in training polygons\n")
+predictors <- data.frame()
+response <- numeric()
+xyCoords <- data.frame()
+
+trainvals <- na.omit(trainvals)
+
+
+if (nrow(trainvals) == 0) {
+  cat("\n*************************No training data found**************************** \n")
+  stop("It is possible the projection of the Shapefile with training data and input image are different\nCheck projections and run again", call.=FALSE)
+}
+
+
+cat("Calculating random forest object\n")
+randfor <- randomForest(as.factor(response) ~., data=trainvals, importance=TRUE, na.action=na.omit)
+
+
+cat("Starting predictions\n")
+
+
+bs <- blockSize(satImage)
+
+
+extensionName <- unlist(strsplit(inImageName, "\\."))[length(unlist(strsplit(inImageName, "\\.")))]
+outFileBaseName <- unlist(strsplit(inImageName, paste("\\.", extensionName, sep="")))[1]
+
+
+
+
+
+```
+
+```{r}
+if (classImage) {
+  outClassImage <- raster(satImage)
+  outClassImage <- writeStart(outClassImage, filename=paste(outFileBaseName, "_Class.tif", sep=""), navalue=0, progress='text', format='GTiff', datatype='INT1U', overwrite=TRUE)
+}
+if (probImage) {
+  outProbImage <- raster(satImage)
+  outProbImage <- writeStart(outProbImage, filename=paste(outFileBaseName, "_Prob.tif", sep=""), navalue=0, progress='text', format='GTiff', datatype='INT1U', overwrite=TRUE)
+}
+if (threshImage) {
+  outThreshImage <- raster(satImage)
+  outThreshImage <- writeStart(outThreshImage, filename=paste(outFileBaseName, "_Thresh.tif", sep=""), navalue=0, progress='text', format='GTiff', datatype='INT1U', overwrite=TRUE)
+}
+```
+
+```{r}
+for (i in 1:bs$n) {
+  cat("processing block", i, "of", bs$n, "\r")
+  imageBlock <-  getValuesBlock(satImage, row=bs$row[i], nrows=bs$nrows[i])
+  predValues <- predict(randfor, imageBlock, type='response')
+  classValues <- as.numeric(levels(predValues))[predValues]
+  
+  if (classImage) {
+    #outClassMatrix <- matrix(classValues, nrow=nrow(imageBlock), ncol=1)
+    outClassImage <- writeValues(outClassImage, classValues, bs$row[i])
+  }
+  if (probImage || threshImage) { 
+    predProbs <- as.data.frame(predict(randfor, imageBlock, type='prob'))
+    maxProb <- round(apply(predProbs, 1, max) * 100)
+    if (probImage) { 
+      #outProbMatrix <- matrix(maxProb, nrow=nrow(imageBlock), ncol=1)
+      outProbImage <- writeValues(outProbImage, maxProb, bs$row[i])
+    }
+    if (threshImage) {
+      threshValues <- classValues
+      threshValues[which(maxProb <= probThreshold)] <- 0
+      #outThreshMatrix <- matrix(threshValues, nrow=nrow(imageBlock), ncol=1)
+      outThreshImage <- writeValues(outThreshImage, threshValues, bs$row[i])
+    }
+  }
+}
+
+```
+
+```{r}
+if (classImage) {
+  outClassImage <- writeStop(outClassImage)
+}
+if (probImage) {
+  outProbImage <- writeStop(outProbImage)
+}
+if (threshImage) {
+  outThreshImage <- writeStop(outThreshImage)
+}
+
+```
+
+```{r}
+confMatrix <- randfor$confusion
+cat("#################################################################################\n")
+cat("OOB error rate estimate\n", 1 - (sum(diag(confMatrix)) / sum(confMatrix[,1:ncol(confMatrix)-1])), "%\n\n", sep="")
+cat("Confusion matrix\n")
+print(randfor$confusion)
+cat("\n")
+
+if (outMarginFile != "") {
+  # Calculate margin (proportion of votes for correct class minus maximum proportion of votes for other classes)
+  marginData <- margin(randfor)
+  trainingAccuracy <- cbind(marginData[order(marginData)], trainvals[order(marginData),1])
+   # Add column names to attributes table
+  colnames(trainingAccuracy) <- c("margin", "classNum")  
+  # Order X and Y coordinates 
+  xyCoords <- xyCoords[order(marginData),]
+  
+  # Create and write point Shapefile with margin information to help improve training data
+  pointVector <- SpatialPointsDataFrame(xyCoords, as.data.frame(trainingAccuracy), coords.nrs = numeric(0), proj4string = satImage@crs)
+  writeOGR(pointVector, outMarginFile, "layer", driver="ESRI Shapefile", check_exists=TRUE)
+}
+
+```
+
+```{r}
+varImpPlot(randfor)
+
+```
+
+```{r}
+timeDiff <- Sys.time() - startTime
+cat("\nProcessing time", format(timeDiff), "\n")
+
+
+```
+
