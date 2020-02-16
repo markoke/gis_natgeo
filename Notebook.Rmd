@@ -2,7 +2,8 @@
 title: "LAND USE AND LAND COVER DETECTION"
 output: html_notebook
 ---
-
+### Loading required libraries
+This is where the required libraries/ packages are loaded.
 ```{r loading required libraries}
 require(maptools) #Tools for handling spatial data
 require(sp) #Methods for dealing with spatial data
@@ -11,6 +12,8 @@ require(raster) #Methods to create a RasterLayer object
 require (rgdal) #permit spatial data to be associated with coordinate reference systems
 
 ```
+### Setting varibles and starting to process
+The required files and variables will be set and the process will start.
 ```{r Set variables and start processing}
 # Set working directory
 setwd("C:/Users/Brian Andrew/Desktop/Project")
@@ -43,6 +46,7 @@ probThreshold <- 75
 xBand <- 2
 yBand <- 3
 ```
+### Setting the start processing time and creating land cover attributes
 ```{r Start processing}
 startTime <- Sys.time()
 cat("Start time", format(startTime))
@@ -68,12 +72,15 @@ if (length(classNums) != length(classSampNums)) {
 }
 
 # Check if all classNums exist in uniqueAtt
-    #### CHECK THIS FUNCTION TO SEE IF classNums ARE IN uniqueAtt  ################
+    #CHECK THIS FUNCTION TO SEE IF classNums ARE IN uniqueAtt
 if (sum(classNums %in% uniqueAtt) != length(uniqueAtt)) {
   cat("not all classes in classNums are defined in the vecotr file")
   stop("Check classNums and vector attribute table", call.=FALSE)
 }
-    
+```
+
+### Creating input data from shapefile and creating training data
+```{r Start processing_1}
 # Create input data from a Shapefile using all training data 
 cat("Create training data using all pixels in training polygons")
 predictors <- data.frame()
@@ -122,8 +129,11 @@ for (n in 1:length(classNums)) {
   }
 }
     
-trainvals <- cbind(response, predictors)    
+trainvals <- cbind(response, predictors)
+```
 
+### Testing if feature space plot is needed and calculating the output layers selected in the variables section
+```{r Start processing_2}
 # Test if feature space plot is needed
 if (xBand != 0 & yBand != 0) {
   #Plot feature space and samples
@@ -157,6 +167,7 @@ if (xBand != 0 & yBand != 0) {
   
     legend(minBand1, maxBand2, col=1:v, pch=20, title="Classes", legend=as.character(uniqueValues))
   
+    #This sets the prompt that has to be entered at the console and press enter to continue
     continue <- readline(prompt="Type n to stop, c to change feature space bands, s to define a rectangle to locate gaps in feature space, or any other key to continue with randome forests model creation and prediciton, type the key in the console and press enter: ")
   
     if (substr(continue, 1,1) == "n") {
@@ -201,14 +212,18 @@ if (xBand != 0 & yBand != 0) {
     }
   }
 }
+```
 
+### Processing the raster output
+
+```{r Start processing_3}
 # Remove NA values 
 trainvals <- na.omit(trainvals)
 
 # Check to make sure Shapefile and input image are in the same projection
 if (nrow(trainvals) == 0) {
   cat("No training data found")
-  stop("It is possible the projection of the Shapefile with training data and input image are different </p>Check projections and run again", call.=FALSE)
+  stop("It is possible the projection of the Shapefile with training data and input image are different. Check projections and run again", call.=FALSE)
 }
 
 # Run Random Forest
@@ -277,6 +292,7 @@ if (threshImage) {
 }
 
 ```
+### Plotting the image output
 ```{r Plot image, fig.align='center'}
 #Plot the image output if probImage is True then the outProbImage is plotted, 
 #else if ThreshImage is True then the outThreshImage is plotted 
@@ -293,12 +309,14 @@ if (probImage==TRUE) {
   print("This is a classImage")
 }
 ```
+### Creating the confusion matrix
 ```{r Confusion Matrix}
 # Print error rate and confusion matrix for this classification
 confMatrix <- randfor$confusion
 cat("OOB error rate estimate\n", 1 - (sum(diag(confMatrix)) / sum(confMatrix[,1:ncol(confMatrix)-1])), "%\n\n", sep="")
 print(randfor$confusion)
 ```
+### Creating the marginfile
 ```{r Creating the marginfile}
 if (outMarginFile != "") {
   # Calculate margin (proportion of votes for correct class minus maximum proportion of votes for other classes)
@@ -316,10 +334,13 @@ if (outMarginFile != "") {
   writeOGR(pointVector, outMarginFile, "layer", driver="ESRI Shapefile", check_exists=TRUE)
 }
 ```
+
+### Plotting variable of Importance
 ```{r Ploting Variable of Importance}
 # Plotting variable importance plot
 varImpPlot(randfor)
 ```
+### Fanially calculating the processing time
 ```{r Calculating processing time}
 # Calculate processing time
 timeDiff <- Sys.time() - startTime
