@@ -1,4 +1,4 @@
-# Land Cover Change Detection using Random Forest applied to Landsat 5 and Landsat 7 imagery.
+# Change Detection for Land Cover Mapping using Random Forest applied to Landsat 5 and Landsat 7 imagery.
 
 This notebook provides a workflow to detect and classify the land cover changes in a preprocessed multi date image at 30m resolution. The model will detect the following Land Cover Changes: Water to Water, Forest to Non-Forest, Non-Forest to Forest and Forest to Forest.
 
